@@ -1,11 +1,16 @@
 {
+  "id": "./",
   "name": "SakuFlow — Manajemen Keuangan",
   "short_name": "SakuFlow",
-  "description": "Catatan keuangan pribadi yang tersimpan di perangkat.",
+  "description": "Catat uang masuk, uang keluar, dan pantau arus keuangan harian, bulanan, serta tahunan.",
+  "lang": "id-ID",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#0b1117",
   "theme_color": "#10161d",
-  "icons": [{"src":"./icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
 }

@@ -243,7 +243,7 @@
   </style>
 </head>
 <body>
-  <div class="app-shell" id="appShell">
+  <div class="app-shell">
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark" aria-hidden="true">
@@ -252,7 +252,7 @@
         <div><div class="brand-name">SakuFlow</div><div class="brand-caption">PERSONAL FINANCE</div></div>
       </div>
       <div class="top-actions">
-        <div class="local-chip" id="cloudStatus"><span class="local-dot"></span> Tersimpan di perangkat</div><button class="icon-btn" id="securityBtn" aria-label="Atur biometrik" title="Atur kunci biometrik">⌑</button><button class="icon-btn" id="backupBtn" aria-label="Backup data" title="Ekspor backup JSON">↓</button><button class="icon-btn" id="restoreBtn" aria-label="Pulihkan backup" title="Pulihkan backup JSON">↑</button>
+        <div class="local-chip"><span class="local-dot"></span> Tersimpan di perangkat</div>
         <button class="icon-btn" id="exportTopBtn" aria-label="Ekspor transaksi" title="Ekspor CSV">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v3h16v-3"/></svg>
         </button>
@@ -348,17 +348,9 @@
         </section>
       </section>
     </main>
-    <div class="footer-note">SakuFlow · Data lokal pribadi · Backup mingguan di perangkat</div>
+    <div class="footer-note">SakuFlow · Catatan keuangan pribadi · Data tersimpan secara lokal di browser ini</div>
   </div>
 
-  <section id="biometricGate" class="hidden" style="position:fixed;inset:0;z-index:100;background:#0b1117;display:none;place-items:center;padding:24px;text-align:center">
-    <div style="width:min(380px,100%);padding:28px;border:1px solid rgba(183,205,219,.13);border-radius:24px;background:#121b24">
-      <div class="brand-mark" style="margin:0 auto 18px;width:58px;height:58px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6z"/><path d="M9 12.5 11 14l4-4"/></svg></div>
-      <h2 style="margin:0 0 8px">SakuFlow terkunci</h2><p style="color:#8ea1ae;font-size:13px;line-height:1.6">Verifikasi identitas perangkat untuk membuka catatan keuanganmu.</p>
-      <button id="unlockBiometricBtn" class="primary-btn" style="width:100%;margin-top:12px">Buka dengan biometrik</button>
-      <p id="biometricGateError" style="color:#ef8d91;font-size:11px;min-height:16px"></p>
-    </div>
-  </section>
   <div class="modal-backdrop" id="transactionModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal">
       <div class="modal-head"><div><div class="modal-title" id="modalTitle">Tambah transaksi</div><div class="modal-caption">Isi detailnya agar setiap uang tercatat dengan jelas.</div></div><button class="icon-btn close-btn" id="closeModalBtn" aria-label="Tutup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
@@ -381,25 +373,7 @@
   <script>
     (() => {
       'use strict';
-      const DB_NAME = 'SakuFlowLocalDB';
-      const DB_VERSION = 1;
-      const TX_STORE = 'transactions';
-      const META_STORE = 'meta';
-      const BACKUP_STORE = 'backups';
-      const LEGACY_KEY = 'sakuflow_transactions_v1';
-      const BACKUP_INTERVAL = 7 * 24 * 60 * 60 * 1000;
-      let db;
-      let transactions = [];
-      let periodMode = 'month';
-      let selectedPeriod;
-      let historySearch = '';
-      let historyType = 'all';
-      let historyCategory = 'all';
-      let currentType = 'in';
-      let toastTimer;
-      let biometricCredentialId = null;
-      let writeQueue = Promise.resolve();
-
+      const STORAGE_KEY = 'sakuflow_transactions_v1';
       const categories = {
         in: ['Gaji', 'Bonus', 'Bisnis', 'Hasil investasi', 'Hadiah', 'Lainnya'],
         out: ['Makanan', 'Transportasi', 'Tagihan', 'Belanja', 'Kesehatan', 'Pendidikan', 'Hiburan', 'Cicilan', 'Tabungan', 'Lainnya']
@@ -409,7 +383,6 @@
       const today = new Date();
       const localDateString = (date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
       const monthString = (date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;
-      selectedPeriod = monthString(new Date());
       const money = (amount) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount || 0);
       const compactMoney = (amount) => {
         const abs = Math.abs(amount || 0);
@@ -419,151 +392,39 @@
         return money(amount);
       };
       const dateLabel = (value, options = { day: 'numeric', month: 'short', year: 'numeric' }) => new Intl.DateTimeFormat('id-ID', options).format(new Date(value + 'T00:00:00'));
-      const escapeHTML = (value) => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
+      const escapeHTML = (value) => String(value).replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
       const iconFor = (type) => type === 'in'
         ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg>'
         : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14m0 0 6-6m-6 6-6-6"/></svg>';
 
-      function openDatabase() {
-        return new Promise((resolve, reject) => {
-          const request = indexedDB.open(DB_NAME, DB_VERSION);
-          request.onupgradeneeded = () => {
-            const database = request.result;
-            if (!database.objectStoreNames.contains(TX_STORE)) database.createObjectStore(TX_STORE, { keyPath: 'id' });
-            if (!database.objectStoreNames.contains(META_STORE)) database.createObjectStore(META_STORE, { keyPath: 'key' });
-            if (!database.objectStoreNames.contains(BACKUP_STORE)) database.createObjectStore(BACKUP_STORE, { keyPath: 'id' });
-          };
-          request.onsuccess = () => resolve(request.result);
-          request.onerror = () => reject(request.error);
-        });
-      }
-      function idbRequest(request) {
-        return new Promise((resolve, reject) => { request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
-      }
-      async function readAllTransactions() {
-        const tx = db.transaction(TX_STORE, 'readonly');
-        return idbRequest(tx.objectStore(TX_STORE).getAll());
-      }
-      async function persistTransactions() {
-        const snapshot = transactions.map(item => ({...item}));
-        writeQueue = writeQueue.then(() => new Promise((resolve, reject) => {
-          const tx = db.transaction(TX_STORE, 'readwrite');
-          const store = tx.objectStore(TX_STORE);
-          store.clear(); snapshot.forEach(item => store.put(item));
-          tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);
-        }));
-        try { await writeQueue; setLocalStatus('Tersimpan di perangkat'); maybeScheduledBackup(); }
-        catch (error) { console.error(error); setLocalStatus('Gagal menyimpan', false); showToast('Gagal menyimpan data ke perangkat.'); }
-      }
-      function setLocalStatus(message, ok = true) {
-        const node = $('#cloudStatus');
-        if (node) node.innerHTML = `<span class="local-dot" style="background:${ok ? 'var(--mint)' : 'var(--coral)'}"></span> ${escapeHTML(message)}`;
-      }
-      async function getMeta(key) { return idbRequest(db.transaction(META_STORE, 'readonly').objectStore(META_STORE).get(key)); }
-      async function setMeta(key, value) {
-        return new Promise((resolve, reject) => { const tx = db.transaction(META_STORE, 'readwrite'); tx.objectStore(META_STORE).put({key, value}); tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error); });
-      }
-      async function createLocalBackup(silent = false) {
-        const snapshot = { version: 1, app: 'SakuFlow', createdAt: new Date().toISOString(), transactions: transactions.map(item => ({...item})) };
-        await new Promise((resolve, reject) => { const tx = db.transaction(BACKUP_STORE, 'readwrite'); tx.objectStore(BACKUP_STORE).put({id: `backup-${Date.now()}`, ...snapshot}); tx.oncomplete=resolve; tx.onerror=()=>reject(tx.error); });
-        await setMeta('lastBackupAt', Date.now());
-        if (!silent) downloadJSON(snapshot);
-      }
-      async function maybeScheduledBackup() {
+      let transactions = loadTransactions();
+      let periodMode = 'month';
+      let selectedPeriod = monthString(today);
+      let historySearch = '';
+      let historyType = 'all';
+      let historyCategory = 'all';
+      let currentType = 'in';
+      let toastTimer;
+
+      function loadTransactions() {
         try {
-          const last = await getMeta('lastBackupAt');
-          if (!last || Date.now() - last.value >= BACKUP_INTERVAL) {
-            await createLocalBackup(true);
-            if (last) showToast('Backup mingguan lokal berhasil diperbarui. Ekspor file untuk cadangan di luar HP.');
-            else showToast('Backup lokal pertama berhasil dibuat.');
-          }
-        } catch (error) { console.warn('Backup terjadwal gagal:', error); }
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return [];
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) return [];
+          return parsed.filter(item => item && typeof item.id === 'string' && ['in','out'].includes(item.type) && Number.isSafeInteger(item.amount) && item.amount > 0 && typeof item.date === 'string');
+        } catch (error) { console.warn('Data SakuFlow tidak dapat dibaca:', error); return []; }
       }
       function saveTransactions() {
-        if (!db) { showToast('Database belum siap. Coba lagi sebentar.'); return false; }
-        persistTransactions();
-        return true;
-      }
-      function downloadJSON(data) {
-        const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
-        const url = URL.createObjectURL(blob); const a = document.createElement('a');
-        a.href=url; a.download=`sakuflow-backup-${localDateString(new Date())}.json`; document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(()=>URL.revokeObjectURL(url), 1500);
-      }
-      async function exportBackup() {
-        await createLocalBackup(true);
-        downloadJSON({version:1,app:'SakuFlow',createdAt:new Date().toISOString(),transactions:transactions.map(item=>({...item}))});
-        showToast('File backup JSON berhasil dibuat. Simpan di tempat aman.');
-      }
-      async function restoreBackup(file) {
         try {
-          const parsed = JSON.parse(await file.text());
-          if (!parsed || !Array.isArray(parsed.transactions)) throw new Error('Format file tidak dikenali.');
-          const valid = parsed.transactions.filter(item => item && typeof item.id === 'string' && ['in','out'].includes(item.type) && Number.isSafeInteger(item.amount) && item.amount > 0 && typeof item.date === 'string' && typeof item.purpose === 'string');
-          if (!confirm(`Pulihkan ${valid.length} transaksi? Data saat ini akan diganti.`)) return;
-          transactions = valid; await persistTransactions(); renderAll(); showToast('Backup berhasil dipulihkan.');
-        } catch (error) { showToast(error.message || 'File backup tidak valid.'); }
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
+          return true;
+        } catch (error) {
+          showToast('Penyimpanan gagal. Ruang browser mungkin penuh.');
+          console.error(error);
+          return false;
+        }
       }
-      function bytesToBase64(bytes) { return btoa(String.fromCharCode(...new Uint8Array(bytes))); }
-      function base64ToBytes(value) { return Uint8Array.from(atob(value), c => c.charCodeAt(0)); }
-      function randomChallenge() { return crypto.getRandomValues(new Uint8Array(32)); }
-      async function enableBiometric() {
-        if (!window.PublicKeyCredential || !navigator.credentials) { showToast('Biometrik WebAuthn tidak didukung browser ini.'); return; }
-        if (!isSecureContext) { showToast('Biometrik memerlukan HTTPS.'); return; }
-        try {
-          const userId = crypto.getRandomValues(new Uint8Array(16));
-          const credential = await navigator.credentials.create({publicKey:{challenge:randomChallenge(),rp:{name:'SakuFlow',id:location.hostname},user:{id:userId,name:'pemilik-sakuflow',displayName:'Pemilik SakuFlow'},pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],authenticatorSelection:{authenticatorAttachment:'platform',residentKey:'preferred',userVerification:'required'},timeout:60000,attestation:'none'}});
-          if (!credential) throw new Error('Pendaftaran biometrik dibatalkan.');
-          await setMeta('biometricCredentialId', bytesToBase64(credential.rawId));
-          biometricCredentialId = bytesToBase64(credential.rawId);
-          showToast('Kunci biometrik perangkat berhasil diaktifkan.');
-        } catch (error) { console.error(error); showToast(error.message || 'Gagal mengaktifkan biometrik.'); }
-      }
-      async function verifyBiometric() {
-        if (!biometricCredentialId) return true;
-        try {
-          const credential = await navigator.credentials.get({publicKey:{challenge:randomChallenge(),allowCredentials:[{type:'public-key',id:base64ToBytes(biometricCredentialId)}],userVerification:'required',timeout:60000}});
-          return !!credential;
-        } catch (error) { $('#biometricGateError').textContent = 'Verifikasi gagal. Coba lagi atau periksa kunci layar perangkat.'; return false; }
-      }
-      async function initializeLocal() {
-        try {
-          if (!('indexedDB' in window)) throw new Error('Browser tidak mendukung IndexedDB.');
-          db = await openDatabase();
-          transactions = await readAllTransactions();
-          if (!transactions.length) {
-            try {
-              const legacy = JSON.parse(localStorage.getItem(LEGACY_KEY) || '[]');
-              if (Array.isArray(legacy) && legacy.length) { transactions = legacy.filter(item => item && typeof item.id === 'string' && ['in','out'].includes(item.type) && Number.isSafeInteger(item.amount) && item.amount > 0 && typeof item.date === 'string'); await persistTransactions(); }
-            } catch (error) { console.warn('Migrasi data lama dilewati:', error); }
-          }
-          const stored = await getMeta('biometricCredentialId');
-          biometricCredentialId = stored?.value || null;
-          if (biometricCredentialId) {
-            $('#appShell').style.display = 'none'; $('#biometricGate').style.display = 'grid';
-          } else { $('#appShell').style.display = ''; }
-          $('#dateInput').value = localDateString(new Date());
-          renderAll();
-          if (navigator.storage?.persist) navigator.storage.persist().then(granted => setLocalStatus(granted ? 'Tersimpan di perangkat' : 'Penyimpanan lokal aktif')).catch(()=>{});
-          await maybeScheduledBackup();
-        } catch (error) { console.error('SakuFlow initialization failed:', error); const shell = $('#appShell'); if (shell) shell.style.display = ''; setLocalStatus('Database bermasalah', false); showToast('Database lokal gagal dibuka: ' + (error?.message || 'Kesalahan tidak diketahui')); }
-      }
-      $('#securityBtn').addEventListener('click', async () => {
-        if (biometricCredentialId) {
-          if (confirm('Nonaktifkan kunci biometrik SakuFlow di perangkat ini?')) { await setMeta('biometricCredentialId', null); biometricCredentialId=null; showToast('Kunci biometrik dinonaktifkan.'); }
-        } else await enableBiometric();
-      });
-      $('#backupBtn').addEventListener('click', exportBackup);
-      $('#restoreBtn').addEventListener('click', () => restoreInput.click());
-      $('#unlockBiometricBtn').addEventListener('click', async () => {
-        $('#unlockBiometricBtn').disabled = true;
-        if (await verifyBiometric()) { $('#biometricGate').style.display='none'; $('#appShell').style.display=''; }
-        $('#unlockBiometricBtn').disabled = false;
-      });
-      // Pemulihan backup melalui pemilih file.
-      const restoreInput = document.createElement('input'); restoreInput.type='file'; restoreInput.accept='application/json,.json'; restoreInput.hidden=true; document.body.appendChild(restoreInput);
-      restoreInput.addEventListener('change', () => { if (restoreInput.files[0]) restoreBackup(restoreInput.files[0]); restoreInput.value=''; });
-
       function showToast(message) {
         const toast = $('#toast');
         toast.textContent = message;
@@ -829,8 +690,9 @@
       $('#exportTopBtn').addEventListener('click', exportCSV);
       $('#exportHistoryBtn').addEventListener('click', exportCSV);
 
-      // Database lokal: transaksi tidak dikirim ke server.
-      initializeLocal();
+      // Initial state
+      $('#dateInput').value = localDateString(new Date());
+      renderAll();
       if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
         window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(error => console.warn('Service worker belum aktif:', error)));
       }
