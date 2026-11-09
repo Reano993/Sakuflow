@@ -1,2 +1,0 @@
-# Sakuflow
-Ngitung duit
