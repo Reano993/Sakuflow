@@ -545,7 +545,7 @@
           renderAll();
           if (navigator.storage?.persist) navigator.storage.persist().then(granted => setLocalStatus(granted ? 'Tersimpan di perangkat' : 'Penyimpanan lokal aktif')).catch(()=>{});
           await maybeScheduledBackup();
-        } catch (error) { console.error('SakuFlow initialization failed:', error); const shell = $('#appShell'); if (shell) shell.style.display = ''; setLocalStatus('Database bermasalah', false); showToast('Database lokal gagal dibuka: ' + (error?.message || 'Kesalahan tidak diketahui')); }
+        } catch (error) { console.error(error); showToast('Database lokal gagal dibuka: ' + error.message); }
       }
       $('#securityBtn').addEventListener('click', async () => {
         if (biometricCredentialId) {
